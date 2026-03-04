@@ -148,32 +148,68 @@ Cambios en el **código TypeScript** del fork que se compilan y despliegan.
 
 ### [P1] Blueprints — motor de nodos deterministas + agente
 
-- **Estado:** pendiente (fase 3 del roadmap)
-- **Fecha:** —
+- **Estado:** activo
+- **Fecha:** 2026-03-04
+- **Commit:** `edd03c26e`
 - **Motivación:** Los payloads de cron actuales son texto libre. El agente
   puede saltarse pasos, reordenarlos o ignorarlos. HighBot hizo timeout (600s)
   probablemente por no seguir un flujo óptimo. La idea es alternar nodos
   `deterministic` (bash sin LLM) con nodos `agent` (loop creativo) de forma
   obligatoria, como hacen los "Minions" de Stripe: "El sistema corre el modelo,
   no al revés."
-- **Archivos a modificar:**
-  - `src/cron/types.ts` — nuevo tipo de payload `kind: "blueprint"` con array
-    de nodos `BlueprintNode[]`
-  - `src/cron/isolated-agent/run.ts` — dispatch: `if kind === "blueprint"` →
-    llamar al nuevo runner
-  - `src/cron/isolated-agent/blueprint-runner.ts` — **archivo nuevo** (~200-300
-    líneas): iterar nodos, ejecutar deterministas con `child_process.exec`,
-    lanzar agente para nodos `agent`, gestionar `condition`, `maxRetries`,
-    `onFail: abort|next`, notificar en abort
+- **Archivos modificados:**
+  - `src/cron/types.ts` — tipos `BlueprintNode` y `CronBlueprintPayload`;
+    `CronPayload` union extendida; `CronPayloadPatch` extendida
+  - `src/cron/isolated-agent/blueprint-runner.ts` — **archivo nuevo** (175 líneas):
+    itera nodos, ejecuta deterministas con `child_process.exec`, lanza agente
+    para nodos `agent`, gestiona `maxRetries`, `onFail: abort|continue`,
+    inyecta stdout como `{{id}}` en mensajes posteriores
+  - `src/cron/isolated-agent/run.ts` — import del runner + dispatch early-return
+    `if payload.kind === "blueprint"` antes de cualquier setup LLM
+  - `src/cron/service/jobs.ts` — branches `blueprint` en `buildPayloadFromPatch`
+    y `mergeCronPayload` (dos sitios donde el upstream asumía solo `agentTurn`)
+  - `src/cron/service/normalize.ts` — guard en `normalizePayloadToSystemText`
 - **Riesgo de conflicto:** bajo-medio
-  - `types.ts`: nuevo tipo union, no modifica los existentes → riesgo bajo
-  - `run.ts`: solo añade un `if/else` en el dispatch → riesgo bajo si upstream
-    no reestructura el dispatch
-  - `blueprint-runner.ts`: archivo nuevo → sin riesgo de conflicto
-- **Zona de conflicto:** inicio de `runCronIsolatedAgentTurn` donde se inspecciona
-  `params.job.payload.kind`
-- **Notas de merge:** (pendiente)
+  - `types.ts`: nuevo tipo union antes de los existentes → riesgo bajo
+  - `run.ts`: `if/else` early-return en dispatch → riesgo bajo si upstream
+    no reestructura el inicio de `runCronIsolatedAgentTurn`
+  - `jobs.ts` y `normalize.ts`: zonas de switch/if sobre `payload.kind` →
+    **vigilar si upstream añade nuevos kinds**, habría que añadir nuestro branch
+  - `blueprint-runner.ts`: archivo nuevo → sin riesgo
+- **Zona de conflicto:**
+  - `run.ts` línea ~185 (`agentCfg` merge block) — donde se insertó el dispatch
+  - `jobs.ts` función `mergeCronPayload` y `buildPayloadFromPatch`
+  - `normalize.ts` función `normalizePayloadToSystemText`
+- **Notas de merge:** Al hacer merge upstream vigilar `jobs.ts` — si upstream
+  añade un nuevo `kind` de payload, la cadena `if/else if` puede necesitar
+  el branch blueprint reinsertado
 - **Referencia:** `docs/propuesta-stripe-minions.md` · PR #3
+
+#### Formato de blueprint en crons.json
+
+````json
+{
+  "payload": {
+    "kind": "blueprint",
+    "timeoutSeconds": 600,
+    "nodes": [
+      {
+        "kind": "deterministic",
+        "id": "open_prs",
+        "run": "gh pr list --repo owner/repo --state open --json number,title",
+        "label": "PRs abiertas",
+        "onFail": "abort"
+      },
+      {
+        "kind": "agent",
+        "label": "Analizar y actuar",
+        "message": "PRs abiertas: {{open_prs}}\n\nAnaliza y decide qué hacer.",
+        "maxRetries": 1,
+        "onFail": "abort"
+      }
+    ]
+  }
+}
 
 ---
 
@@ -185,9 +221,9 @@ Cambios en el **código TypeScript** del fork que se compilan y despliegan.
 
 ## Historial de merges con upstream
 
-| Fecha      | SHA upstream mergeado | Versión  | Conflictos             | Resolución |
-| ---------- | --------------------- | -------- | ---------------------- | ---------- |
-| 2026-03-04 | `7b5e64ef2`           | 2026.3.3 | ninguno (fork inicial) | —          |
+| Fecha | SHA upstream mergeado | Versión | Conflictos | Resolución |
+|-------|-----------------------|---------|------------|------------|
+| 2026-03-04 | `7b5e64ef2` | 2026.3.3 | ninguno (fork inicial) | — |
 
 ---
 
@@ -212,4 +248,4 @@ git diff upstream/main -- src/cron/isolated-agent/run.ts
 
 # Ver todos los archivos que difieren del upstream
 git diff --name-only upstream/main..HEAD
-```
+````
