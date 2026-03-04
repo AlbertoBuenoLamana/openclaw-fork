@@ -100,6 +100,17 @@ export type BlueprintNode =
       timeoutMs?: number;
       /** What to do if this command fails: abort run or continue. Default: "abort". */
       onFail?: "abort" | "continue";
+      /**
+       * Store output under an additional context key besides the node id.
+       * Useful when the id is technical but you want a friendlier placeholder name.
+       */
+      storeAs?: string;
+      /**
+       * Condition expression: only run this node if the expression is true.
+       * Supported: "<nodeId>.failed", "<nodeId>.ok", "<nodeId>.skipped"
+       * e.g. "lint.failed" → only run if node "lint" exited with error.
+       */
+      condition?: string;
     }
   | {
       kind: "agent";
@@ -113,7 +124,36 @@ export type BlueprintNode =
       onFail?: "abort" | "continue";
       /** Timeout override in seconds for this agent node. */
       timeoutSeconds?: number;
+      /**
+       * Store agent outputText under an additional context key.
+       * Useful to reference the agent output in subsequent node messages.
+       */
+      storeAs?: string;
+      /**
+       * Condition expression: only run this node if the expression is true.
+       * Supported: "<nodeId>.failed", "<nodeId>.ok", "<nodeId>.skipped"
+       * e.g. "lint.failed" → only run if node "lint" failed.
+       */
+      condition?: string;
     };
+
+/** Notification sent when a blueprint aborts (onFail: "abort"). */
+export type BlueprintAbortNotify = {
+  /** Channel to send the abort notification (default: job delivery channel). */
+  channel?: string;
+  /** Recipient id (e.g. Telegram chat id). */
+  to?: string;
+  /** Account id for multi-account setups. */
+  accountId?: string;
+  /**
+   * Message template. Available placeholders:
+   *   {{aborted_node}} — label of the node that caused the abort
+   *   {{error}}        — error message (truncated to 400 chars)
+   *   {{job_name}}     — job name
+   *   {{job_id}}       — job id
+   */
+  message?: string;
+};
 
 export type CronBlueprintPayload = {
   kind: "blueprint";
@@ -124,6 +164,11 @@ export type CronBlueprintPayload = {
   fallbacks?: string[];
   /** Per-blueprint timeout for the entire run in seconds. */
   timeoutSeconds?: number;
+  /**
+   * Notification config when the blueprint aborts mid-run.
+   * If omitted, no notification is sent on abort.
+   */
+  onAbort?: BlueprintAbortNotify;
 };
 
 export type CronPayload =
