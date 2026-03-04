@@ -55,6 +55,66 @@ resetea la config del servidor.
 
 ---
 
+### [P7] Métricas semanales — weekly-summary expandido
+
+- **Estado:** activo
+- **Fecha:** 2026-03-04
+- **Tipo:** configuración (cron payload, no código)
+- **Motivación:** El cron `weekly-summary` tenía un prompt trivial. Lo expandimos
+  con métricas estructuradas: tabla de agentes (lastRunStatus, lastDurationMs,
+  consecutiveErrors), PRs de la semana en ambos repos, estado de proyectos,
+  y guardado en `agent-metrics.md`.
+- **Archivos modificados:**
+  - `~/.openclaw/cron/jobs.json` — payload del job `weekly-summary`
+  - Backup en `manbotlo-config/config/crons.json`
+- **Riesgo de conflicto:** ninguno
+
+---
+
+### [P6] PR templates — lolHighlights y fifa2026
+
+- **Estado:** activo
+- **Fecha:** 2026-03-04
+- **Tipo:** configuración (archivos GitHub, no código)
+- **Motivación:** Los agentes HighBot y FifaEye creaban PRs sin formato consistente.
+  Un template obliga a incluir cambios, validaciones y contexto.
+- **Archivos creados:**
+  - `AlbertoBuenoLamana/lolHighlights/.github/PULL_REQUEST_TEMPLATE.md`
+  - `AlbertoBuenoLamana/fifa2026/.github/PULL_REQUEST_TEMPLATE.md`
+- **Riesgo de conflicto:** ninguno
+
+---
+
+### [P5] Workspace efímero — HighBot blueprint
+
+- **Estado:** activo
+- **Fecha:** 2026-03-04
+- **Tipo:** configuración (cron payload convertido a blueprint)
+- **Motivación:** HighBot trabajaba siempre en el mismo directorio. Si el git
+  state se corrompía, la siguiente ejecución heredaba el problema. Con un clone
+  en `/tmp/highbot-YYYYMMDD-HHMMSS`, cada sesión arranca limpia.
+- **Archivos modificados:**
+  - `~/.openclaw/cron/jobs.json` — `highbot-dev` convertido de `agentTurn` a `blueprint`
+    con 6 nodos: setup(clone) → check-prs → check-issues → check-todos → plan-and-code(LLM) → cleanup(rm)
+  - Backup en `manbotlo-config/config/crons.json`
+- **Riesgo de conflicto:** ninguno (depende de P1 blueprints en el fork)
+
+---
+
+### [P4] Tool curation — deny por agente
+
+- **Estado:** activo
+- **Fecha:** 2026-03-04
+- **Tipo:** configuración (`openclaw.json`, no código)
+- **Motivación:** El core ya soporta `tools.deny` por agente. Añadido sin cambios
+  en código: cada agente deniega las tools claramente fuera de su scope.
+- **Archivos modificados:**
+  - `~/.openclaw/openclaw.json` — campo `tools.deny` en cada entrada de `agents.list`
+  - Backup en `manbotlo-config/config/openclaw.json`
+- **Riesgo de conflicto:** ninguno
+
+---
+
 ### [P2] Cap de reintentos — SOULs de HighBot y FifaEye
 
 - **Estado:** activo
@@ -150,7 +210,7 @@ Cambios en el **código TypeScript** del fork que se compilan y despliegan.
 
 - **Estado:** activo
 - **Fecha:** 2026-03-04
-- **Commit:** `edd03c26e`
+- **Commits:** `edd03c26e` (v1), `470b062ce` (v2: condition, storeAs, onAbort)
 - **Motivación:** Los payloads de cron actuales son texto libre. El agente
   puede saltarse pasos, reordenarlos o ignorarlos. HighBot hizo timeout (600s)
   probablemente por no seguir un flujo óptimo. La idea es alternar nodos
