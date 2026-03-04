@@ -22,7 +22,7 @@ y los **posibles conflictos** a vigilar cuando se haga `git merge upstream/main`
 
 ```
 ### [ID] Nombre descriptivo del patch
-- **Estado:** activo | merged-upstream | eliminado
+- **Estado:** activo | eliminado
 - **Fecha:** YYYY-MM-DD
 - **Motivación:** Por qué lo necesitamos / qué problema resuelve
 - **Archivos modificados:**
@@ -30,7 +30,6 @@ y los **posibles conflictos** a vigilar cuando se haga `git merge upstream/main`
 - **Riesgo de conflicto:** bajo | medio | alto
 - **Zona de conflicto:** qué funciones/tipos concretos pueden colisionar
 - **Notas de merge:** (vacío hasta que ocurra un conflicto)
-- **PR upstream:** (enlace si se abrió PR al upstream)
 - **Referencia:** enlace a la PR/issue/doc donde se diseñó
 ```
 
@@ -45,10 +44,6 @@ y los **posibles conflictos** a vigilar cuando se haga `git merge upstream/main`
 | SHA base (fork creado) | `7b5e64ef2` — `fix: preserve raw media invoke for HTTP tool clients (#34365)` |
 | Versión base           | `2026.3.3`                                                                    |
 | Fecha fork             | 2026-03-04                                                                    |
-| Servidor               | Contabo VPS 10 · `62.169.16.122`                                              |
-| Fuentes en servidor    | `/opt/openclaw-src`                                                           |
-| Binario global         | `/usr/lib/node_modules/openclaw`                                              |
-| Script de update       | `manbotlo-config/scripts/update-openclaw-fork.sh`                             |
 
 ---
 
@@ -83,7 +78,6 @@ y los **posibles conflictos** a vigilar cuando se haga `git merge upstream/main`
     `commandBody` (~línea donde se construye el prompt); el upstream puede
     modificar esa misma zona para otros features
 - **Notas de merge:** (pendiente)
-- **PR upstream:** (pendiente — se abrirá cuando esté implementado y probado)
 - **Referencia:** `docs/propuesta-stripe-minions.md` en repo
   `AlbertoBuenoLamana/openclaw` · PR #3
 
@@ -117,7 +111,6 @@ y los **posibles conflictos** a vigilar cuando se haga `git merge upstream/main`
 - **Zona de conflicto:** función de dispatch en `run.ts` (~primera línea del
   body de `runCronIsolatedAgentTurn` donde se decide el tipo de payload)
 - **Notas de merge:** (pendiente)
-- **PR upstream:** (se abrirá tras P3 — el código TS ya es el PR)
 - **Referencia:** `docs/propuesta-stripe-minions.md` · PR #3
 
 ---
