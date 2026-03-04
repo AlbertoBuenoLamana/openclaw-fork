@@ -96,6 +96,21 @@ type CronAgentTurnPayloadFields = {
   channel?: CronMessageChannel;
   to?: string;
   bestEffortDeliver?: boolean;
+  /** Commands to run deterministically before the agent loop.
+   * Each command stdout is captured and injected into the message
+   * by replacing {{id}} placeholders. Errors abort the run before
+   * spending any LLM tokens. (fork patch: P3 pre-hydration)
+   */
+  preContext?: Array<{
+    /** Identifier used as {{id}} placeholder in the message. */
+    id: string;
+    /** Shell command to execute. */
+    run: string;
+    /** Human-readable label shown in logs. */
+    label?: string;
+    /** Timeout in milliseconds for this command (default: 30000). */
+    timeoutMs?: number;
+  }>;
 };
 
 type CronAgentTurnPayload = {

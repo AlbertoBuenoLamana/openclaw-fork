@@ -13,7 +13,7 @@ y los **posibles conflictos** a vigilar cuando se haga `git merge upstream/main`
 - **Al resolver un conflicto:** añade una nota en la entrada correspondiente
   explicando cómo se resolvió.
 - **Al añadir un patch nuevo:** añade una entrada nueva siguiendo la plantilla.
-- **Al eliminar un patch** (porque upstream lo incorporó): mueve la entrada
+- **Al eliminar un patch** (porque ya no lo necesitamos): mueve la entrada
   a la sección `## Patches eliminados` con fecha y motivo.
 
 ---
@@ -49,37 +49,73 @@ y los **posibles conflictos** a vigilar cuando se haga `git merge upstream/main`
 
 ## Patches activos
 
-> Aún no hay patches de código. El fork está limpio sobre el upstream `2026.3.3`.
-> Las próximas secciones se irán rellenando conforme se añadan cambios.
-
 ---
 
 ### [P3] Context pre-hydration en cron isolated-agent
 
-- **Estado:** pendiente (próximo a implementar)
-- **Fecha:** —
+- **Estado:** activo
+- **Fecha:** 2026-03-04
 - **Motivación:** Los agentes gastan tokens "descubriendo" información que el
   sistema ya puede obtener determinísticamente antes de arrancar el loop LLM.
-  Inspirado en el patrón Stripe Minions: ejecutar comandos deterministas antes
-  del loop del agente e inyectar los resultados como contexto inicial.
-  FifaEye ejecuta `gh pr list` y `grep ERROR` dentro del loop de agente,
-  cuando podrían ser pasos previos sin coste de tokens LLM.
-- **Archivos a modificar:**
-  - `src/cron/types.ts` — añadir campo opcional `preContext` en
-    `CronAgentTurnPayloadFields`
-  - `src/cron/isolated-agent/run.ts` — ejecutar `preContext` antes de lanzar
-    el agente, reemplazar `{{id}}` en el mensaje con el output de cada comando
+  Inspirado en el patrón Stripe Minions: ejecutar comandos bash antes del loop
+  del agente e inyectar los resultados como contexto inicial mediante
+  placeholders `{{id}}` en el mensaje.
+  Ejemplo concreto: FifaEye ejecuta `gh pr list` y `grep ERROR` dentro del
+  loop de agente, cuando podrían ser pasos previos sin coste de tokens LLM.
+- **Archivos modificados:**
+  - `src/cron/types.ts` — campo opcional `preContext` añadido al tipo
+    `CronAgentTurnPayloadFields`. Array de objetos `{ id, run, label?, timeoutMs? }`.
+    Retrocompatible (campo opcional, no rompe configs existentes).
+  - `src/cron/isolated-agent/run.ts` — tres cambios:
+    1. Imports añadidos: `exec` de `node:child_process` y `promisify` de `node:util`
+    2. Función nueva `runPreContext()` (antes del export): itera el array,
+       ejecuta cada comando con `execAsync` (timeout 30s por defecto, 512 KB
+       max output), reemplaza `{{id}}` en el mensaje, loga preview de 120 chars.
+       Si un comando falla → lanza error y aborta el run sin gastar tokens LLM.
+    3. Llamada a `runPreContext()` insertada justo después de que `commandBody`
+       queda finalizado y antes del bloque `skillsSnapshot`.
 - **Riesgo de conflicto:** medio
 - **Zona de conflicto:**
-  - `types.ts`: type `CronAgentTurnPayloadFields` — el upstream puede añadir
-    campos nuevos en el mismo bloque; merge suele ser trivial si son campos
-    distintos
-  - `run.ts`: función `runCronIsolatedAgentTurn` — zona de construcción de
-    `commandBody` (~línea donde se construye el prompt); el upstream puede
-    modificar esa misma zona para otros features
-- **Notas de merge:** (pendiente)
-- **Referencia:** `docs/propuesta-stripe-minions.md` en repo
-  `AlbertoBuenoLamana/openclaw` · PR #3
+  - `types.ts` → tipo `CronAgentTurnPayloadFields`: el upstream puede añadir
+    campos en el mismo bloque. Merge casi siempre trivial (campos distintos).
+    Vigilar si upstream renombra o reestructura `CronAgentTurnPayloadFields`.
+  - `run.ts` → zona entre el `if (deliveryRequested)` y `const existingSkillsSnapshot`:
+    si upstream inserta lógica nueva en esa misma zona habrá conflicto. También
+    vigilar si upstream cambia los imports de `node:child_process`/`node:util`
+    (poco probable, son Node built-ins).
+- **Notas de merge:** (ninguna hasta ahora)
+- **Referencia:** `docs/propuesta-stripe-minions.md` · PR #3 en
+  `AlbertoBuenoLamana/openclaw`
+
+#### Uso en crons.json
+
+```json
+{
+  "payload": {
+    "kind": "agentTurn",
+    "message": "Revisión horaria del FIFA bot.\n\nContexto pre-cargado:\n- PRs abiertas: {{open_prs}}\n- Errores hoy: {{today_errors}}\n- Últimos errores: {{last_errors}}\n\nCon esta información, decide si hay errores nuevos no cubiertos por PRs existentes.",
+    "preContext": [
+      {
+        "id": "open_prs",
+        "run": "gh pr list --repo AlbertoBuenoLamana/fifa2026 --state open --json number,title",
+        "label": "PRs abiertas en fifa2026"
+      },
+      {
+        "id": "today_errors",
+        "run": "ssh -i /root/.ssh/rpi_manbotlo manbotlo-reader@100.113.2.32 'grep -c ERROR /home/manbotlo-reader/allowed/fifa-bot/logs/fifa_bot_$(date +%Y-%m-%d).log 2>/dev/null || echo 0'",
+        "label": "Conteo de errores hoy",
+        "timeoutMs": 10000
+      },
+      {
+        "id": "last_errors",
+        "run": "ssh -i /root/.ssh/rpi_manbotlo manbotlo-reader@100.113.2.32 'grep ERROR /home/manbotlo-reader/allowed/fifa-bot/logs/fifa_bot_$(date +%Y-%m-%d).log 2>/dev/null | tail -20'",
+        "label": "Últimos 20 errores",
+        "timeoutMs": 10000
+      }
+    ]
+  }
+}
+```
 
 ---
 
@@ -103,13 +139,12 @@ y los **posibles conflictos** a vigilar cuando se haga `git merge upstream/main`
     lanzar agente para nodos `agent`, gestionar `condition`, `maxRetries`,
     `onFail: abort|next`, notificar en abort
 - **Riesgo de conflicto:** bajo-medio
-  - `types.ts`: mismo riesgo que P3 pero en zona distinta (nuevo tipo, no
-    modifica los existentes)
-  - `run.ts`: solo añade un `if/else` en el dispatch; riesgo bajo si upstream
+  - `types.ts`: nuevo tipo union, no modifica los existentes → riesgo bajo
+  - `run.ts`: solo añade un `if/else` en el dispatch → riesgo bajo si upstream
     no reestructura el dispatch
-  - `blueprint-runner.ts`: archivo nuevo, sin riesgo de conflicto
-- **Zona de conflicto:** función de dispatch en `run.ts` (~primera línea del
-  body de `runCronIsolatedAgentTurn` donde se decide el tipo de payload)
+  - `blueprint-runner.ts`: archivo nuevo → sin riesgo de conflicto
+- **Zona de conflicto:** inicio de `runCronIsolatedAgentTurn` donde se inspecciona
+  `params.job.payload.kind`
 - **Notas de merge:** (pendiente)
 - **Referencia:** `docs/propuesta-stripe-minions.md` · PR #3
 
@@ -117,8 +152,7 @@ y los **posibles conflictos** a vigilar cuando se haga `git merge upstream/main`
 
 ## Patches eliminados
 
-> Ninguno por ahora. Cuando un patch sea incorporado por el upstream, se moverá
-> aquí con fecha y SHA del commit upstream que lo incorporó.
+> Ninguno por ahora.
 
 ---
 
@@ -140,11 +174,14 @@ git log --oneline HEAD..upstream/main
 # Ver qué commits nuestros no están en upstream
 git log --oneline upstream/main..HEAD
 
-# Hacer merge del upstream (ejecutar update-openclaw-fork.sh en vez de esto)
+# Hacer merge del upstream
+bash scripts/update-openclaw-fork.sh   # en el servidor
+# o manualmente:
 git merge upstream/main --no-edit
 
 # Ver diff de un archivo nuestro vs upstream
 git diff upstream/main -- src/cron/types.ts
+git diff upstream/main -- src/cron/isolated-agent/run.ts
 
 # Ver todos los archivos que difieren del upstream
 git diff --name-only upstream/main..HEAD

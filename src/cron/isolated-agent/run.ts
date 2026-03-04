@@ -1,3 +1,5 @@
+import { exec as _exec } from "node:child_process";
+import { promisify } from "node:util";
 import {
   resolveAgentConfig,
   resolveAgentDir,
@@ -88,6 +90,39 @@ export type RunCronAgentTurnResult = {
   deliveryAttempted?: boolean;
 } & CronRunOutcome &
   CronRunTelemetry;
+
+const execAsync = promisify(_exec);
+
+/**
+ * P3 pre-hydration: execute deterministic shell commands before the agent loop
+ * and inject their output into the message via {{id}} placeholders.
+ * Returns the hydrated message, or throws if a command fails.
+ */
+async function runPreContext(
+  message: string,
+  preContext: NonNullable<import("../types.js").CronAgentTurnPayloadFields["preContext"]>,
+  jobId: string,
+): Promise<string> {
+  let hydrated = message;
+  for (const entry of preContext) {
+    const timeoutMs = entry.timeoutMs ?? 30_000;
+    const label = entry.label ?? entry.id;
+    try {
+      const { stdout, stderr } = await execAsync(entry.run, {
+        timeout: timeoutMs,
+        maxBuffer: 512 * 1024,
+      });
+      const raw = stdout.trim() || stderr.trim() || "(no output)";
+      const preview = raw.length > 120 ? raw.slice(0, 120) + "..." : raw;
+      logWarn("[cron:" + jobId + "] preContext[" + label + "]: " + preview);
+      hydrated = hydrated.replaceAll("{{" + entry.id + "}}", raw);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error("preContext command '" + label + "' failed: " + msg, { cause: err });
+    }
+  }
+  return hydrated;
+}
 
 export async function runCronIsolatedAgentTurn(params: {
   cfg: OpenClawConfig;
@@ -383,6 +418,16 @@ export async function runCronIsolatedAgentTurn(params: {
   if (deliveryRequested) {
     commandBody =
       `${commandBody}\n\nReturn your summary as plain text; it will be delivered automatically. If the task explicitly calls for messaging a specific external recipient, note who/where it should go instead of sending it yourself.`.trim();
+  }
+
+  // [P3 pre-hydration] Run deterministic commands before the agent loop and
+  // inject their output into commandBody via {{id}} placeholders.
+  if (agentPayload?.preContext && agentPayload.preContext.length > 0) {
+    try {
+      commandBody = await runPreContext(commandBody, agentPayload.preContext, params.job.id);
+    } catch (err) {
+      return withRunSession({ status: "error", error: String(err) });
+    }
   }
 
   const existingSkillsSnapshot = cronSession.sessionEntry.skillsSnapshot;
