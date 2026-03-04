@@ -47,7 +47,34 @@ y los **posibles conflictos** a vigilar cuando se haga `git merge upstream/main`
 
 ---
 
+## Cambios de configuración activos
+
+Cambios que **no tocan código del fork** pero son parte del mismo diseño.
+No generan conflictos de merge, pero hay que recordar reaplicarlos si se
+resetea la config del servidor.
+
+---
+
+### [P2] Cap de reintentos — SOULs de HighBot y FifaEye
+
+- **Estado:** activo
+- **Fecha:** 2026-03-04
+- **Tipo:** configuración (SOUL.md, no código TypeScript)
+- **Motivación:** HighBot hizo timeout (600s) entrando en loops de fix sin
+  límite. Inspirado en Stripe Minions: "Si el LLM no puede arreglarlo en 2
+  intentos, un tercero no va a ayudar. Solo quema compute."
+- **Archivos modificados:**
+  - `~/.openclaw/agents/highbot/agent/SOUL.md` — sección `## Regla de reintentos (P2)` añadida al final: max 2 rondas fix→check, luego push de rama + announce a ManBotLo
+  - `~/.openclaw/agents/fifaeye/agent/SOUL.md` — misma sección añadida
+  - Backup en `manbotlo-config/souls/highbot-SOUL.md` y `fifaeye-SOUL.md`
+- **Riesgo de conflicto:** ninguno (no es código del fork)
+- **Referencia:** `docs/propuesta-stripe-minions.md` · PR #3
+
+---
+
 ## Patches activos
+
+Cambios en el **código TypeScript** del fork que se compilan y despliegan.
 
 ---
 
