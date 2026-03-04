@@ -77,9 +77,64 @@ export type CronFailureAlert = {
   accountId?: string;
 };
 
-export type CronPayload = { kind: "systemEvent"; text: string } | CronAgentTurnPayload;
+// ── P1 Blueprint types ──────────────────────────────────────────────────────
 
-export type CronPayloadPatch = { kind: "systemEvent"; text?: string } | CronAgentTurnPayloadPatch;
+/**
+ * A single node in a blueprint. Nodes are executed in order.
+ *
+ * - kind "deterministic": run a shell command, capture stdout → injects
+ *   result as {{id}} placeholder in subsequent node messages.
+ * - kind "agent": run the LLM agent with the given message (may use
+ *   {{id}} placeholders from prior deterministic nodes).
+ */
+export type BlueprintNode =
+  | {
+      kind: "deterministic";
+      /** Identifier for {{id}} placeholder injection into later messages. */
+      id: string;
+      /** Shell command to execute. */
+      run: string;
+      /** Human-readable label for logs. */
+      label?: string;
+      /** Timeout in ms (default: 30 000). */
+      timeoutMs?: number;
+      /** What to do if this command fails: abort run or continue. Default: "abort". */
+      onFail?: "abort" | "continue";
+    }
+  | {
+      kind: "agent";
+      /** Message sent to the LLM (may reference {{id}} from prior nodes). */
+      message: string;
+      /** Human-readable label for logs. */
+      label?: string;
+      /** Max retries if agent run fails (default: 0). */
+      maxRetries?: number;
+      /** What to do if the agent run still fails after retries. Default: "abort". */
+      onFail?: "abort" | "continue";
+      /** Timeout override in seconds for this agent node. */
+      timeoutSeconds?: number;
+    };
+
+export type CronBlueprintPayload = {
+  kind: "blueprint";
+  nodes: BlueprintNode[];
+  /** Optional model override applied to all agent nodes. */
+  model?: string;
+  /** Optional fallback models applied to all agent nodes. */
+  fallbacks?: string[];
+  /** Per-blueprint timeout for the entire run in seconds. */
+  timeoutSeconds?: number;
+};
+
+export type CronPayload =
+  | { kind: "systemEvent"; text: string }
+  | CronAgentTurnPayload
+  | CronBlueprintPayload;
+
+export type CronPayloadPatch =
+  | { kind: "systemEvent"; text?: string }
+  | CronAgentTurnPayloadPatch
+  | CronBlueprintPayload;
 
 type CronAgentTurnPayloadFields = {
   message: string;

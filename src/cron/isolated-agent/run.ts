@@ -53,6 +53,7 @@ import {
 } from "../../security/external-content.js";
 import { resolveCronDeliveryPlan } from "../delivery.js";
 import type { CronJob, CronRunOutcome, CronRunTelemetry } from "../types.js";
+import { runCronBlueprint } from "./blueprint-runner.js";
 import {
   dispatchCronDelivery,
   matchesMessagingToolDeliveryTarget,
@@ -160,6 +161,20 @@ export async function runCronIsolatedAgentTurn(params: {
   // This ensures auth-profiles, workspace, and agentDir all resolve to the
   // correct per-agent paths (e.g. ~/.openclaw/agents/<agentId>/agent/).
   const agentId = normalizedRequested ?? defaultAgentId;
+  // [P1] Blueprint dispatch — delegate to blueprint-runner before any LLM setup
+  if (params.job.payload.kind === "blueprint") {
+    return runCronBlueprint({
+      cfg: params.cfg,
+      deps: params.deps,
+      job: params.job,
+      payload: params.job.payload,
+      sessionKey: params.sessionKey,
+      agentId: params.agentId ?? agentId,
+      lane: params.lane,
+      abortSignal: params.abortSignal ?? params.signal,
+    });
+  }
+
   const agentCfg: AgentDefaultsConfig = Object.assign(
     {},
     params.cfg.agents?.defaults,

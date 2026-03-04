@@ -595,6 +595,11 @@ function mergeCronPayload(existing: CronPayload, patch: CronPayloadPatch): CronP
     return { kind: "systemEvent", text };
   }
 
+  // [P1] Blueprint merge: pass through the full patch (nodes replace nodes)
+  if (patch.kind === "blueprint") {
+    return buildPayloadFromPatch(patch);
+  }
+
   if (existing.kind !== "agentTurn") {
     return buildPayloadFromPatch(patch);
   }
@@ -680,6 +685,14 @@ function buildPayloadFromPatch(patch: CronPayloadPatch): CronPayload {
       throw new Error('cron.update payload.kind="systemEvent" requires text');
     }
     return { kind: "systemEvent", text: patch.text };
+  }
+
+  // [P1] Blueprint payload — pass through as-is (nodes are already validated)
+  if (patch.kind === "blueprint") {
+    if (!Array.isArray(patch.nodes) || patch.nodes.length === 0) {
+      throw new Error('cron.update payload.kind="blueprint" requires nodes array');
+    }
+    return patch;
   }
 
   if (typeof patch.message !== "string" || patch.message.length === 0) {

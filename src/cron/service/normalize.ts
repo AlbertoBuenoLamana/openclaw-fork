@@ -83,5 +83,9 @@ export function normalizePayloadToSystemText(payload: CronPayload) {
   if (payload.kind === "systemEvent") {
     return payload.text.trim();
   }
+  // [P1] Blueprint payloads: summarize nodes count as fallback system text
+  if (payload.kind === "blueprint") {
+    return `blueprint(${payload.nodes.length} nodes)`;
+  }
   return payload.message.trim();
 }
