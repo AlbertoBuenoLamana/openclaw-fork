@@ -965,7 +965,7 @@ export async function executeJobCore(
     }
   }
 
-  if (job.payload.kind !== "agentTurn") {
+  if (job.payload.kind !== "agentTurn" && job.payload.kind !== "blueprint") {
     return { status: "skipped", error: "isolated job requires payload.kind=agentTurn" };
   }
   if (abortSignal?.aborted) {
@@ -974,7 +974,7 @@ export async function executeJobCore(
 
   const res = await state.deps.runIsolatedAgentJob({
     job,
-    message: job.payload.message,
+    message: job.payload.kind === "agentTurn" ? job.payload.message : "",
     abortSignal,
   });
 
