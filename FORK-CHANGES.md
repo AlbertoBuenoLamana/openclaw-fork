@@ -85,31 +85,23 @@ resetea la config del servidor.
 
 ---
 
-### [P5] Workspace efímero — HighBot agentTurn+preContext
+### [P5] Workspace efímero — HighBot blueprint
 
-- **Estado:** activo (revertido a agentTurn — ver notas)
-- **Fecha:** 2026-03-04 · **Revertido:** 2026-03-05
+- **Estado:** activo (blueprint restaurado — P1v3 resuelve la regresión)
+- **Fecha:** 2026-03-04 · **Regresión:** 2026-03-05 · **Restaurado:** 2026-03-05
 - **Tipo:** configuración (cron payload)
 - **Motivación:** HighBot trabajaba siempre en el mismo directorio. Si el git
   state se corrompía, la siguiente ejecución heredaba el problema. Con un clone
   en `/tmp/highbot-YYYYMMDD-HHMMSS`, cada sesión arranca limpia.
 - **Archivos modificados:**
-  - `~/.openclaw/cron/jobs.json` — `highbot-dev` usa `agentTurn` con 5 `preContext`
-    steps: setup(clone) → check-prs → check-pr-comments → check-issues → check-todos.
-    El cleanup del workspace está en el paso 13 del `message` del agente.
+  - `~/.openclaw/cron/jobs.json` — `highbot-dev` usa `blueprint` con 7 nodos:
+    setup(clone) → check-prs → check-pr-comments → check-issues → check-todos → plan-and-code(LLM) → cleanup(rm)
   - Backup en `manbotlo-config/config/crons.json`
-- **Riesgo de conflicto:** ninguno
-- **⚠️ Regresión — 2026-03-05:** El upstream commit `b44df7f91e75ba1` introdujo
-  validación en `run.ts`: `isolated job requires payload.kind=agentTurn`.
-  El binario oficial rechaza `blueprint` en sesiones `isolated` antes de ejecutar
-  nada → el job fue skipped el 2026-03-05 a las 08:00 con ese error.
-  **Fix aplicado:** revertido de `blueprint` → `agentTurn`+`preContext` (P3).
-  Los 5 nodos deterministas pasan a `preContext`; el nodo `agent` pasa a `message`.
-  El cleanup se hace en el paso 13 de las instrucciones del agente.
-- **Estado de P1 en producción:** el fork compila blueprints pero el binario
-  oficial los bloquea en `isolated`. Blueprints sólo funcionarían con `sessionTarget: session`
-  o desplegando el fork compilado. Mientras se use el binario oficial, **toda
-  la lógica orquestada debe ir en `agentTurn`+`preContext`**.
+- **Riesgo de conflicto:** ninguno (depende de P1v3 en el fork)
+- **⚠️ Regresión y resolución — 2026-03-05:** upstream `b44df7f` añadió guard en
+  `timer.ts` que bloqueaba blueprint antes de llegar al dispatch de P1. El job fue
+  skipped a las 08:00. Fix: P1v3 extendió los guards. Cron restaurado a blueprint.
+  Test manual exitoso: `lastRunStatus: ok`, 240s, sin error.
 
 ---
 
@@ -222,7 +214,7 @@ Cambios en el **código TypeScript** del fork que se compilan y despliegan.
 
 - **Estado:** activo
 - **Fecha:** 2026-03-04
-- **Commits:** `edd03c26e` (v1), `470b062ce` (v2: condition, storeAs, onAbort)
+- **Commits:** `edd03c26e` (v1), `470b062ce` (v2: condition, storeAs, onAbort), `da4eedd89` (v3: fix guards)
 - **Motivación:** Los payloads de cron actuales son texto libre. El agente
   puede saltarse pasos, reordenarlos o ignorarlos. HighBot hizo timeout (600s)
   probablemente por no seguir un flujo óptimo. La idea es alternar nodos
@@ -250,11 +242,19 @@ Cambios en el **código TypeScript** del fork que se compilan y despliegan.
   - `blueprint-runner.ts`: archivo nuevo → sin riesgo
 - **Zona de conflicto:**
   - `run.ts` línea ~185 (`agentCfg` merge block) — donde se insertó el dispatch
-  - `jobs.ts` función `mergeCronPayload` y `buildPayloadFromPatch`
+  - `jobs.ts` función `mergeCronPayload`, `buildPayloadFromPatch` y `assertSupportedJobSpec`
   - `normalize.ts` función `normalizePayloadToSystemText`
-- **Notas de merge:** Al hacer merge upstream vigilar `jobs.ts` — si upstream
-  añade un nuevo `kind` de payload, la cadena `if/else if` puede necesitar
-  el branch blueprint reinsertado
+  - `timer.ts` línea ~968 — guard `payload.kind !== "agentTurn"` y llamada `runIsolatedAgentJob`
+- **Notas de merge:** Al hacer merge upstream vigilar `timer.ts` y `jobs.ts` —
+  si upstream añade validaciones nuevas sobre `payload.kind`, hay que extenderlas
+  para incluir `"blueprint"`. El error concreto a buscar es `"isolated job requires
+payload.kind=agentTurn"`. La lección de P1v3: el upstream puede añadir guards
+  en el **outer runner** (`timer.ts`) además del dispatcher (`run.ts`).
+- **⚠️ Regresión resuelta — 2026-03-05:** P1v1 y P1v2 pusieron el dispatch en
+  `run.ts` (función interna) pero el upstream commit `b44df7f` añadió un guard
+  en `timer.ts` (función exterior) que bloqueaba antes de llegar al dispatch.
+  P1v3 (`da4eedd89`) extiende los guards en `timer.ts` y `jobs.ts:assertSupportedJobSpec`
+  para aceptar `blueprint` además de `agentTurn`.
 - **Referencia:** `docs/propuesta-stripe-minions.md` · PR #3
 
 #### Formato de blueprint en crons.json
@@ -296,7 +296,7 @@ Cambios en el **código TypeScript** del fork que se compilan y despliegan.
 | Fecha | SHA upstream mergeado | Versión | Conflictos | Resolución |
 |-------|-----------------------|---------|------------|------------|
 | 2026-03-04 | `7b5e64ef2` | 2026.3.3 | ninguno (fork inicial) | — |
-| 2026-03-05 | `b44df7f91e75ba1` | 2026.3.3-patch | **REGRESIÓN en P5** | `highbot-dev` revertido de `blueprint` → `agentTurn`+`preContext`. Upstream añadió guard `isolated job requires payload.kind=agentTurn` en `run.ts`. Ver entrada P5. |
+| 2026-03-05 | `b44df7f91e75ba1` | 2026.3.3-patch | **REGRESIÓN en P5** — resuelta | Upstream añadió guard en `timer.ts`. P1v3 (`da4eedd89`) extiende los guards para aceptar `blueprint`. Cron restaurado a blueprint, test ok. Ver P1 y P5. |
 
 ---
 
