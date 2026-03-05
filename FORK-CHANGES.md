@@ -85,19 +85,31 @@ resetea la config del servidor.
 
 ---
 
-### [P5] Workspace efímero — HighBot blueprint
+### [P5] Workspace efímero — HighBot agentTurn+preContext
 
-- **Estado:** activo
-- **Fecha:** 2026-03-04
-- **Tipo:** configuración (cron payload convertido a blueprint)
+- **Estado:** activo (revertido a agentTurn — ver notas)
+- **Fecha:** 2026-03-04 · **Revertido:** 2026-03-05
+- **Tipo:** configuración (cron payload)
 - **Motivación:** HighBot trabajaba siempre en el mismo directorio. Si el git
   state se corrompía, la siguiente ejecución heredaba el problema. Con un clone
   en `/tmp/highbot-YYYYMMDD-HHMMSS`, cada sesión arranca limpia.
 - **Archivos modificados:**
-  - `~/.openclaw/cron/jobs.json` — `highbot-dev` convertido de `agentTurn` a `blueprint`
-    con 6 nodos: setup(clone) → check-prs → check-issues → check-todos → plan-and-code(LLM) → cleanup(rm)
+  - `~/.openclaw/cron/jobs.json` — `highbot-dev` usa `agentTurn` con 5 `preContext`
+    steps: setup(clone) → check-prs → check-pr-comments → check-issues → check-todos.
+    El cleanup del workspace está en el paso 13 del `message` del agente.
   - Backup en `manbotlo-config/config/crons.json`
-- **Riesgo de conflicto:** ninguno (depende de P1 blueprints en el fork)
+- **Riesgo de conflicto:** ninguno
+- **⚠️ Regresión — 2026-03-05:** El upstream commit `b44df7f91e75ba1` introdujo
+  validación en `run.ts`: `isolated job requires payload.kind=agentTurn`.
+  El binario oficial rechaza `blueprint` en sesiones `isolated` antes de ejecutar
+  nada → el job fue skipped el 2026-03-05 a las 08:00 con ese error.
+  **Fix aplicado:** revertido de `blueprint` → `agentTurn`+`preContext` (P3).
+  Los 5 nodos deterministas pasan a `preContext`; el nodo `agent` pasa a `message`.
+  El cleanup se hace en el paso 13 de las instrucciones del agente.
+- **Estado de P1 en producción:** el fork compila blueprints pero el binario
+  oficial los bloquea en `isolated`. Blueprints sólo funcionarían con `sessionTarget: session`
+  o desplegando el fork compilado. Mientras se use el binario oficial, **toda
+  la lógica orquestada debe ir en `agentTurn`+`preContext`**.
 
 ---
 
@@ -284,6 +296,7 @@ Cambios en el **código TypeScript** del fork que se compilan y despliegan.
 | Fecha | SHA upstream mergeado | Versión | Conflictos | Resolución |
 |-------|-----------------------|---------|------------|------------|
 | 2026-03-04 | `7b5e64ef2` | 2026.3.3 | ninguno (fork inicial) | — |
+| 2026-03-05 | `b44df7f91e75ba1` | 2026.3.3-patch | **REGRESIÓN en P5** | `highbot-dev` revertido de `blueprint` → `agentTurn`+`preContext`. Upstream añadió guard `isolated job requires payload.kind=agentTurn` en `run.ts`. Ver entrada P5. |
 
 ---
 
